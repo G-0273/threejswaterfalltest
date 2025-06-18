@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MindAR AR Card - Model Only</title>
+  <title>AR Waterfall</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -54,7 +54,7 @@
     const start = async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
-        imageTargetSrc: "./targets.mind"
+        imageTargetSrc: "./green.mind"
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -69,7 +69,6 @@
       setSize();
       window.addEventListener('resize', setSize);
 
-      // Lighting
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
       scene.add(ambientLight);
 
@@ -86,21 +85,20 @@
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         const model = gltf.scene;
-        model.scale.set(0.1, 0.1, 0.1);
-        model.rotation.set(0, Math.PI / 2, 0);
+        model.scale.set(0.3, 0.3, 0.3);
+        model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -0.5, 0);
+
         anchor.group.add(model);
 
         if (gltf.animations && gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           animationActions = gltf.animations.map((clip) => {
             const action = mixer.clipAction(clip);
-            action.setLoop(THREE.LoopOnce);
-            action.clampWhenFinished = true;
+            action.setLoop(THREE.LoopRepeat);
             return action;
           });
 
-          // Optional: auto-play the animation on first load
           animationActions.forEach(action => {
             action.reset();
             action.play();
@@ -110,7 +108,6 @@
         console.error("Error loading GLB model:", error);
       });
 
-      // Reset and play animation each time the marker is detected
       anchor.onTargetFound = () => {
         animationActions.forEach(action => {
           action.reset();
