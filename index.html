@@ -2,21 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AR Waterfall</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
-    body {
+    html, body {
       margin: 0;
+      padding: 0;
       overflow: hidden;
+      touch-action: none; /* Prevent touch zoom and pan */
     }
+
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
+
     canvas {
       width: 100% !important;
       height: 100% !important;
@@ -28,6 +32,15 @@
   <div id="container"></div>
 
   <script>
+    // Prevent zoom on wheel and gesture events
+    window.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('gesturechange', (e) => e.preventDefault());
+    window.addEventListener('gestureend', (e) => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -38,6 +51,9 @@
 
       const { renderer, scene, camera } = mindarThree;
 
+      // Pull back the camera to make room for large models
+      camera.position.z = 3;
+
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
       let mixer;
@@ -46,7 +62,7 @@
         const model = gltf.scene;
         model.scale.set(0.3, 0.3, 0.3);
         model.rotation.set(0, -Math.PI / 2, 0);
-        model.position.set(0, -0.5, 0); // closer to marker center
+        model.position.set(0, -2, 0);
 
         anchor.group.add(model);
 
