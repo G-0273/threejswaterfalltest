@@ -13,21 +13,18 @@
       padding: 0;
       overflow: hidden;
       touch-action: none; /* Prevent touch zoom and pan */
-      background-color: black;
     }
 
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
-      background-color: black;
     }
 
     canvas {
       width: 100% !important;
       height: 100% !important;
-      object-fit: contain; /* Prevents cropping of scanner view */
-      display: block;
+      object-fit: cover;
     }
   </style>
 </head>
@@ -97,4 +94,5 @@
   </script>
 </body>
 </html>
+
 
