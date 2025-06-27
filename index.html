@@ -17,16 +17,16 @@
     html, body {
       width: 100%;
       height: 100%;
-      background: black;
       overflow: hidden;
+      background: black;
     }
 
     #container {
-      width: 100vw;
-      height: 100vh;
-      position: fixed;
+      position: absolute;
       top: 0;
       left: 0;
+      width: 100vw;
+      height: 100vh;
     }
 
     canvas, video {
@@ -48,16 +48,14 @@
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
-        imageTargetSrc: "./green.mind",
-        filterMinCF: 0.1,
-        filterBeta: 0.01,
+        imageTargetSrc: "./green.mind", // path to your .mind file
       });
 
       const { renderer, scene, camera } = mindarThree;
       const anchor = mindarThree.addAnchor(0);
       const loader = new THREE.GLTFLoader();
 
-      let model, mixer, persisted = false;
+      let model, mixer;
 
       loader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
@@ -75,34 +73,9 @@
         }
       });
 
-      anchor.onTargetFound = () => {
-        if (!persisted && model) {
-          model.updateMatrixWorld(true);
-          const pos = new THREE.Vector3();
-          const quat = new THREE.Quaternion();
-          const scale = new THREE.Vector3();
-          model.matrixWorld.decompose(pos, quat, scale);
-
-          anchor.group.remove(model);
-          model.position.copy(pos);
-          model.quaternion.copy(quat);
-          model.scale.copy(scale);
-          scene.add(model);
-
-          if (mixer) {
-            mixer = new THREE.AnimationMixer(model);
-            gltf.animations.forEach((clip) => {
-              mixer.clipAction(clip).play();
-            });
-          }
-
-          persisted = true;
-        }
-      };
-
       scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
 
-      await mindarThree.start();
+      await mindarThree.start(); // <- CAMERA ACTIVATES HERE
 
       const clock = new THREE.Clock();
       renderer.setAnimationLoop(() => {
@@ -114,5 +87,4 @@
   </script>
 </body>
 </html>
-
-
+s
