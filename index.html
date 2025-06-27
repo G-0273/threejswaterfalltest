@@ -12,19 +12,23 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      touch-action: none;
+      background: black;
     }
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
+      overflow: hidden;
     }
     canvas, video {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100% !important;
       height: 100% !important;
       object-fit: cover;
-      outline: none !important;
       border: none !important;
+      outline: none !important;
     }
   </style>
 </head>
@@ -35,33 +39,28 @@
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
-        imageTargetSrc: "./green.mind", // ensure this path is correct
+        imageTargetSrc: "./green.mind",
         filterMinCF: 0.1,
         filterBeta: 0.01,
       });
 
       const { renderer, scene, camera } = mindarThree;
-      camera.position.z = 3;
-
       const anchor = mindarThree.addAnchor(0);
       const loader = new THREE.GLTFLoader();
 
-      let model, mixer, animations;
-      let persisted = false;
+      let model, mixer, persisted = false;
 
       loader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
-        animations = gltf.animations;
-
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
 
         anchor.group.add(model);
 
-        if (animations.length > 0) {
+        if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
-          animations.forEach((clip) => {
+          gltf.animations.forEach((clip) => {
             mixer.clipAction(clip).play();
           });
         }
@@ -70,7 +69,6 @@
       anchor.onTargetFound = () => {
         if (!persisted && model) {
           model.updateMatrixWorld(true);
-
           const pos = new THREE.Vector3();
           const quat = new THREE.Quaternion();
           const scale = new THREE.Vector3();
@@ -82,22 +80,17 @@
           model.scale.copy(scale);
           scene.add(model);
 
-          if (animations.length > 0) {
+          if (mixer) {
             mixer = new THREE.AnimationMixer(model);
-            animations.forEach((clip) => {
-              mixer.clipAction(clip).play();
-            });
+            mixer._actions.forEach(action => action.play());
           }
 
           persisted = true;
         }
       };
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(1, 2, 3);
-      scene.add(directionalLight);
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light);
 
       await mindarThree.start();
 
