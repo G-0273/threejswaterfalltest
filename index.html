@@ -52,6 +52,7 @@
       const gltfLoader = new THREE.GLTFLoader();
       let mixer;
       let model;
+      let modelReady = false;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -68,29 +69,39 @@
             action.play();
           });
         }
+
+        modelReady = true;
       });
 
       anchor.onTargetFound = () => {
-        if (model && !persisted) {
-          model.updateMatrixWorld(true);
+        console.log("Marker detected");
 
-          const worldPos = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          const worldScale = new THREE.Vector3();
-          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+        if (modelReady && !persisted) {
+          // Delay to allow stable detection
+          setTimeout(() => {
+            if (!anchor.group.visible) return; // Still visible?
 
-          // Offset position slightly to make it feel less close
-          worldPos.z -= 0.5;
+            model.updateMatrixWorld(true);
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          anchor.group.remove(model);
-          model.position.copy(worldPos);
-          model.quaternion.copy(worldQuat);
-          model.scale.copy(worldScale);
-          scene.add(model);
+            // Pull the model slightly farther back
+            worldPos.z -= 0.5;
 
-          // Reassign mixer for detached model
-          mixer = new THREE.AnimationMixer(model);
-          persisted = true;
+            anchor.group.remove(model);
+            model.position.copy(worldPos);
+            model.quaternion.copy(worldQuat);
+            model.scale.copy(worldScale);
+            scene.add(model);
+
+            // Restart mixer for detached model
+            mixer = new THREE.AnimationMixer(model);
+            persisted = true;
+
+            console.log("Model persisted to world space");
+          }, 500); // 0.5s delay to stabilize
         }
       };
 
@@ -103,7 +114,6 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
-
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
@@ -113,6 +123,4 @@
   </script>
 </body>
 </html>
-
-
 
