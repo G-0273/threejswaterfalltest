@@ -2,31 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>AR Waterfall</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
-    html, body {
+    * {
       margin: 0;
       padding: 0;
-      overflow: hidden;
-      background: black;
+      box-sizing: border-box;
     }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: black;
+      overflow: hidden;
+    }
+
     #container {
       width: 100vw;
       height: 100vh;
-      position: relative;
-      overflow: hidden;
-    }
-    canvas, video {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
+    }
+
+    canvas, video {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      object-fit: cover;
+      object-fit: cover !important;
       border: none !important;
       outline: none !important;
     }
@@ -82,15 +91,16 @@
 
           if (mixer) {
             mixer = new THREE.AnimationMixer(model);
-            mixer._actions.forEach(action => action.play());
+            gltf.animations.forEach((clip) => {
+              mixer.clipAction(clip).play();
+            });
           }
 
           persisted = true;
         }
       };
 
-      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-      scene.add(light);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
 
       await mindarThree.start();
 
