@@ -14,11 +14,13 @@
       overflow: hidden;
       touch-action: none;
     }
+
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
+
     canvas {
       width: 100% !important;
       height: 100% !important;
@@ -33,6 +35,7 @@
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
+
     window.addEventListener('gesturestart', (e) => e.preventDefault());
     window.addEventListener('gesturechange', (e) => e.preventDefault());
     window.addEventListener('gestureend', (e) => e.preventDefault());
@@ -46,13 +49,12 @@
       });
 
       const { renderer, scene, camera } = mindarThree;
-      camera.position.z = 2.2;
+      camera.position.z = 3;
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
       let mixer;
       let model;
-      let modelReady = false;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -69,17 +71,13 @@
             action.play();
           });
         }
-
-        modelReady = true;
       });
 
       anchor.onTargetFound = () => {
-        console.log("Marker detected");
-
-        if (modelReady && !persisted) {
-          // Delay to allow stable detection
+        if (!persisted && model) {
+          // Let the marker stabilize briefly
           setTimeout(() => {
-            if (!anchor.group.visible) return; // Still visible?
+            if (!anchor.group.visible) return;
 
             model.updateMatrixWorld(true);
             const worldPos = new THREE.Vector3();
@@ -87,21 +85,16 @@
             const worldScale = new THREE.Vector3();
             model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            // Pull the model slightly farther back
-            worldPos.z -= 0.5;
-
             anchor.group.remove(model);
             model.position.copy(worldPos);
             model.quaternion.copy(worldQuat);
             model.scale.copy(worldScale);
             scene.add(model);
 
-            // Restart mixer for detached model
+            // Restart animation for detached model
             mixer = new THREE.AnimationMixer(model);
             persisted = true;
-
-            console.log("Model persisted to world space");
-          }, 500); // 0.5s delay to stabilize
+          }, 300); // small delay to ensure tracking is stable
         }
       };
 
