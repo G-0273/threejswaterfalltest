@@ -14,13 +14,11 @@
       overflow: hidden;
       touch-action: none;
     }
-
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
-
     canvas, video {
       width: 100% !important;
       height: 100% !important;
@@ -34,18 +32,10 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', (e) => {
-      if (e.ctrlKey) e.preventDefault();
-    }, { passive: false });
-
-    window.addEventListener('gesturestart', (e) => e.preventDefault());
-    window.addEventListener('gesturechange', (e) => e.preventDefault());
-    window.addEventListener('gestureend', (e) => e.preventDefault());
-
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
-        imageTargetSrc: "./green.mind",
+        imageTargetSrc: "./green.mind", // ensure this path is correct
         filterMinCF: 0.1,
         filterBeta: 0.01,
       });
@@ -54,14 +44,12 @@
       camera.position.z = 3;
 
       const anchor = mindarThree.addAnchor(0);
-      const gltfLoader = new THREE.GLTFLoader();
+      const loader = new THREE.GLTFLoader();
 
-      let mixer;
-      let model;
-      let animations;
+      let model, mixer, animations;
       let persisted = false;
 
-      gltfLoader.load("models/waterfall.glb", (gltf) => {
+      loader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
         animations = gltf.animations;
 
@@ -74,8 +62,7 @@
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           animations.forEach((clip) => {
-            const action = mixer.clipAction(clip);
-            action.play();
+            mixer.clipAction(clip).play();
           });
         }
       });
@@ -84,22 +71,21 @@
         if (!persisted && model) {
           model.updateMatrixWorld(true);
 
-          const worldPos = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          const worldScale = new THREE.Vector3();
-          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+          const pos = new THREE.Vector3();
+          const quat = new THREE.Quaternion();
+          const scale = new THREE.Vector3();
+          model.matrixWorld.decompose(pos, quat, scale);
 
           anchor.group.remove(model);
-          model.position.copy(worldPos);
-          model.quaternion.copy(worldQuat);
-          model.scale.copy(worldScale);
+          model.position.copy(pos);
+          model.quaternion.copy(quat);
+          model.scale.copy(scale);
           scene.add(model);
 
           if (animations.length > 0) {
             mixer = new THREE.AnimationMixer(model);
             animations.forEach((clip) => {
-              const action = mixer.clipAction(clip);
-              action.play();
+              mixer.clipAction(clip).play();
             });
           }
 
@@ -109,7 +95,6 @@
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
-
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -126,4 +111,5 @@
   </script>
 </body>
 </html>
+
 
