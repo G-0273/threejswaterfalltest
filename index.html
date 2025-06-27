@@ -30,6 +30,13 @@
   <div id="container"></div>
 
   <script>
+    window.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('gesturechange', (e) => e.preventDefault());
+    window.addEventListener('gestureend', (e) => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -44,8 +51,11 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let model, animations, mixer;
+      let mixer;
+      let model;
+      let animations;
       let persisted = false;
+      let foundStableCount = 0;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
@@ -55,7 +65,6 @@
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
 
-        // Initially add to anchor
         anchor.group.add(model);
 
         if (animations.length > 0) {
@@ -68,12 +77,29 @@
       });
 
       anchor.onTargetFound = () => {
-        if (!persisted && model) {
-          // Wait a moment to let tracking stabilize
-          setTimeout(() => {
-            if (!anchor.group.visible) return;
+        foundStableCount = 0; // Reset counter on detection
+      };
 
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 3);
+      scene.add(directionalLight);
+
+      await mindarThree.start();
+
+      const clock = new THREE.Clock();
+
+      renderer.setAnimationLoop(() => {
+        const delta = clock.getDelta();
+        if (mixer) mixer.update(delta);
+
+        // Wait until tracking is stable before detaching
+        if (!persisted && model && anchor.group.visible) {
+          foundStableCount++;
+          if (foundStableCount >= 10) { // wait ~10 frames (~150ms)
             model.updateMatrixWorld(true);
+
             const worldPos = new THREE.Vector3();
             const worldQuat = new THREE.Quaternion();
             const worldScale = new THREE.Vector3();
@@ -85,7 +111,6 @@
             model.scale.copy(worldScale);
             scene.add(model);
 
-            // Re-initialize mixer on detached model
             if (animations.length > 0) {
               mixer = new THREE.AnimationMixer(model);
               animations.forEach((clip) => {
@@ -95,22 +120,9 @@
             }
 
             persisted = true;
-          }, 300); // small delay for stability
+          }
         }
-      };
 
-      // Light
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(1, 2, 3);
-      scene.add(directionalLight);
-
-      await mindarThree.start();
-
-      const clock = new THREE.Clock();
-      renderer.setAnimationLoop(() => {
-        const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
         renderer.render(scene, camera);
       });
     });
