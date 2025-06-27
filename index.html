@@ -30,6 +30,13 @@
   <div id="container"></div>
 
   <script>
+    window.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('gesturechange', (e) => e.preventDefault());
+    window.addEventListener('gestureend', (e) => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -44,7 +51,9 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let mixer, model, animations;
+      let model;
+      let animations;
+      let mixer;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -59,36 +68,39 @@
 
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
-          animations.forEach((clip) => mixer.clipAction(clip).play());
+          animations.forEach((clip) => {
+            const action = mixer.clipAction(clip);
+            action.play();
+          });
         }
       });
 
+      // 🔒 Persist the model when marker is found
       anchor.onTargetFound = () => {
         if (!persisted && model) {
-          // Delay detachment slightly to stabilize tracking
-          setTimeout(() => {
-            if (!model.parent) return;
+          model.updateMatrixWorld(true);
 
-            model.updateMatrixWorld(true);
+          const worldPos = new THREE.Vector3();
+          const worldQuat = new THREE.Quaternion();
+          const worldScale = new THREE.Vector3();
+          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            const worldScale = new THREE.Vector3();
-            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+          anchor.group.remove(model);
 
-            anchor.group.remove(model);
-            model.position.copy(worldPos);
-            model.quaternion.copy(worldQuat);
-            model.scale.copy(worldScale);
-            scene.add(model);
+          model.position.copy(worldPos);
+          model.quaternion.copy(worldQuat);
+          model.scale.copy(worldScale);
+          scene.add(model);
 
-            if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(model);
-              animations.forEach((clip) => mixer.clipAction(clip).play());
-            }
+          if (animations.length > 0) {
+            mixer = new THREE.AnimationMixer(model);
+            animations.forEach((clip) => {
+              const action = mixer.clipAction(clip);
+              action.play();
+            });
+          }
 
-            persisted = true;
-          }, 300); // Delay ensures tracking is stable before detaching
+          persisted = true;
         }
       };
 
@@ -101,6 +113,7 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
+
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
