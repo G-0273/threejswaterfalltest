@@ -46,7 +46,7 @@
       });
 
       const { renderer, scene, camera } = mindarThree;
-      camera.position.z = 3;
+      camera.position.z = 2.2;
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
@@ -72,20 +72,24 @@
 
       anchor.onTargetFound = () => {
         if (model && !persisted) {
-          // Store world position and rotation
           model.updateMatrixWorld(true);
+
           const worldPos = new THREE.Vector3();
           const worldQuat = new THREE.Quaternion();
           const worldScale = new THREE.Vector3();
           model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          // Detach from anchor
+          // Offset position slightly to make it feel less close
+          worldPos.z -= 0.5;
+
           anchor.group.remove(model);
           model.position.copy(worldPos);
           model.quaternion.copy(worldQuat);
           model.scale.copy(worldScale);
           scene.add(model);
 
+          // Reassign mixer for detached model
+          mixer = new THREE.AnimationMixer(model);
           persisted = true;
         }
       };
@@ -109,4 +113,5 @@
   </script>
 </body>
 </html>
+
 
