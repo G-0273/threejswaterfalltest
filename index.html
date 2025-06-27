@@ -30,14 +30,6 @@
   <div id="container"></div>
 
   <script>
-    // Disable zoom/gesture to keep AR view stable
-    window.addEventListener('wheel', (e) => {
-      if (e.ctrlKey) e.preventDefault();
-    }, { passive: false });
-    window.addEventListener('gesturestart', (e) => e.preventDefault());
-    window.addEventListener('gesturechange', (e) => e.preventDefault());
-    window.addEventListener('gestureend', (e) => e.preventDefault());
-
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -52,42 +44,69 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let mixer;
-      let model;
+      let modelOriginal;
+      let modelLocked;
       let animations;
       let persisted = false;
-      let visibleFrameCount = 0;
+      let mixer;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        model = gltf.scene;
+        modelOriginal = gltf.scene;
         animations = gltf.animations;
 
-        model.scale.set(0.2, 0.25, 0.2);
-        model.rotation.set(0, -Math.PI / 2, 0);
-        model.position.set(0, -1.1, -0.3);
+        modelOriginal.scale.set(0.2, 0.25, 0.2);
+        modelOriginal.rotation.set(0, -Math.PI / 2, 0);
+        modelOriginal.position.set(0, -1.1, -0.3);
 
-        anchor.group.add(model);
+        anchor.group.add(modelOriginal);
 
         if (animations.length > 0) {
-          mixer = new THREE.AnimationMixer(model);
+          mixer = new THREE.AnimationMixer(modelOriginal);
           animations.forEach((clip) => {
-            const action = mixer.clipAction(clip);
-            action.play();
+            mixer.clipAction(clip).play();
           });
         }
       });
 
       anchor.onTargetFound = () => {
-        visibleFrameCount = 0;
-      };
+        if (!persisted && modelOriginal) {
+          // Defer lock slightly to allow stable tracking
+          setTimeout(() => {
+            // Clone the model to use as persistent one
+            modelLocked = modelOriginal.clone(true);
+            modelOriginal.updateMatrixWorld(true);
 
-      anchor.onTargetLost = () => {
-        visibleFrameCount = 0;
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+
+            modelOriginal.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+
+            // Remove original from anchor group
+            anchor.group.remove(modelOriginal);
+
+            // Apply world transform
+            modelLocked.position.copy(worldPos);
+            modelLocked.quaternion.copy(worldQuat);
+            modelLocked.scale.copy(worldScale);
+
+            scene.add(modelLocked);
+
+            // Re-setup animation for the new instance
+            if (animations.length > 0) {
+              mixer = new THREE.AnimationMixer(modelLocked);
+              animations.forEach((clip) => {
+                mixer.clipAction(clip).play();
+              });
+            }
+
+            persisted = true;
+          }, 300); // short delay ensures matrixWorld is accurate
+        }
       };
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
-
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -95,40 +114,9 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
-
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
-
-        // Wait until marker is visible for ~10 frames (~150ms) before locking
-        if (!persisted && model && anchor.group.visible) {
-          visibleFrameCount++;
-          if (visibleFrameCount >= 10) {
-            model.updateMatrixWorld(true);
-
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            const worldScale = new THREE.Vector3();
-            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-
-            anchor.group.remove(model);
-            model.position.copy(worldPos);
-            model.quaternion.copy(worldQuat);
-            model.scale.copy(worldScale);
-            scene.add(model);
-
-            if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(model);
-              animations.forEach((clip) => {
-                const action = mixer.clipAction(clip);
-                action.play();
-              });
-            }
-
-            persisted = true;
-          }
-        }
-
         renderer.render(scene, camera);
       });
     });
