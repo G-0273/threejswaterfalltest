@@ -14,15 +14,19 @@
       overflow: hidden;
       touch-action: none;
     }
+
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
-    canvas {
+
+    canvas, video {
       width: 100% !important;
       height: 100% !important;
       object-fit: cover;
+      outline: none !important;
+      border: none !important;
     }
   </style>
 </head>
@@ -30,6 +34,14 @@
   <div id="container"></div>
 
   <script>
+    window.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('gesturechange', (e) => e.preventDefault());
+    window.addEventListener('gestureend', (e) => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -68,10 +80,10 @@
         }
       });
 
-      // Only lock once on first detection
       anchor.onTargetFound = () => {
         if (!persisted && model) {
           model.updateMatrixWorld(true);
+
           const worldPos = new THREE.Vector3();
           const worldQuat = new THREE.Quaternion();
           const worldScale = new THREE.Vector3();
@@ -83,7 +95,7 @@
           model.scale.copy(worldScale);
           scene.add(model);
 
-          if (animations && animations.length > 0) {
+          if (animations.length > 0) {
             mixer = new THREE.AnimationMixer(model);
             animations.forEach((clip) => {
               const action = mixer.clipAction(clip);
@@ -94,8 +106,6 @@
           persisted = true;
         }
       };
-
-      // Optional: Do nothing onTargetLost so model stays
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
