@@ -44,7 +44,10 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let model, animations, mixer;
+      let model;
+      let persistedModel = null;
+      let animations;
+      let mixer;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -60,41 +63,39 @@
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           animations.forEach((clip) => {
-            const action = mixer.clipAction(clip);
-            action.play();
+            mixer.clipAction(clip).play();
           });
         }
       });
 
       anchor.onTargetFound = () => {
         if (!persisted && model) {
-          setTimeout(() => {
-            if (!anchor.group.visible) return;
+          model.updateMatrixWorld(true);
 
-            const clone = model.clone();
-            clone.updateMatrixWorld(true);
+          const worldPos = new THREE.Vector3();
+          const worldQuat = new THREE.Quaternion();
+          const worldScale = new THREE.Vector3();
+          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            const worldScale = new THREE.Vector3();
-            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+          // Clone and persist it
+          persistedModel = model.clone(true);
+          persistedModel.position.copy(worldPos);
+          persistedModel.quaternion.copy(worldQuat);
+          persistedModel.scale.copy(worldScale);
+          scene.add(persistedModel);
 
-            clone.position.copy(worldPos);
-            clone.quaternion.copy(worldQuat);
-            clone.scale.copy(worldScale);
-            scene.add(clone);
+          // Set up animation mixer for cloned model
+          if (animations.length > 0) {
+            mixer = new THREE.AnimationMixer(persistedModel);
+            animations.forEach((clip) => {
+              mixer.clipAction(clip).play();
+            });
+          }
 
-            // Recreate mixer for the clone
-            if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(clone);
-              animations.forEach((clip) => {
-                const action = mixer.clipAction(clip);
-                action.play();
-              });
-            }
-
-            persisted = true;
-          }, 300); // Small delay to stabilize tracking
+          // Remove original from anchor to stop tracking/duplication
+          anchor.group.remove(model);
+          model = null;
+          persisted = true;
         }
       };
 
