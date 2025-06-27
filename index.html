@@ -30,10 +30,10 @@
   <div id="container"></div>
 
   <script>
+    // Prevent zoom on wheel and gesture events
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
-
     window.addEventListener('gesturestart', (e) => e.preventDefault());
     window.addEventListener('gesturechange', (e) => e.preventDefault());
     window.addEventListener('gestureend', (e) => e.preventDefault());
@@ -86,6 +86,7 @@
           model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
           anchor.group.remove(model);
+
           model.position.copy(worldPos);
           model.quaternion.copy(worldQuat);
           model.scale.copy(worldScale);
@@ -103,36 +104,38 @@
         }
       };
 
-      // Simulate head rotation with gyro
+      // Simulate head/camera movement using orientation
       if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', (event) => {
           const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
           const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
           const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
 
-          // Rotate camera slightly to simulate looking around
           camera.rotation.set(beta - Math.PI / 2, gamma, alpha);
         }, true);
       }
 
-      // Simulate position shift from device motion
+      // Slight shift based on motion (optional)
       if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', (event) => {
           const acc = event.accelerationIncludingGravity;
           if (acc) {
-            camera.position.x += acc.x * 0.01;
-            camera.position.y -= acc.y * 0.01;
+            camera.position.x += acc.x * 0.005;
+            camera.position.y -= acc.y * 0.005;
           }
         });
       }
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
+
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
 
-      await mindarThree.start();
+      await mindarThree.start().catch(err => {
+        console.error("MindAR failed to start:", err);
+      });
 
       const clock = new THREE.Clock();
       renderer.setAnimationLoop(() => {
@@ -144,3 +147,5 @@
   </script>
 </body>
 </html>
+
+
