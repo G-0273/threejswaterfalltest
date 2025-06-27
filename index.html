@@ -30,14 +30,6 @@
   <div id="container"></div>
 
   <script>
-    // Prevent zoom on wheel and gesture events
-    window.addEventListener('wheel', (e) => {
-      if (e.ctrlKey) e.preventDefault();
-    }, { passive: false });
-    window.addEventListener('gesturestart', (e) => e.preventDefault());
-    window.addEventListener('gesturechange', (e) => e.preventDefault());
-    window.addEventListener('gestureend', (e) => e.preventDefault());
-
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -52,9 +44,7 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let mixer;
-      let model;
-      let animations;
+      let mixer, model, animations;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -69,73 +59,46 @@
 
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
-          animations.forEach((clip) => {
-            const action = mixer.clipAction(clip);
-            action.play();
-          });
+          animations.forEach((clip) => mixer.clipAction(clip).play());
         }
       });
 
       anchor.onTargetFound = () => {
         if (!persisted && model) {
-          model.updateMatrixWorld(true);
+          // Delay detachment slightly to stabilize tracking
+          setTimeout(() => {
+            if (!model.parent) return;
 
-          const worldPos = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          const worldScale = new THREE.Vector3();
-          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+            model.updateMatrixWorld(true);
 
-          anchor.group.remove(model);
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          model.position.copy(worldPos);
-          model.quaternion.copy(worldQuat);
-          model.scale.copy(worldScale);
-          scene.add(model);
+            anchor.group.remove(model);
+            model.position.copy(worldPos);
+            model.quaternion.copy(worldQuat);
+            model.scale.copy(worldScale);
+            scene.add(model);
 
-          if (animations.length > 0) {
-            mixer = new THREE.AnimationMixer(model);
-            animations.forEach((clip) => {
-              const action = mixer.clipAction(clip);
-              action.play();
-            });
-          }
+            if (animations.length > 0) {
+              mixer = new THREE.AnimationMixer(model);
+              animations.forEach((clip) => mixer.clipAction(clip).play());
+            }
 
-          persisted = true;
+            persisted = true;
+          }, 300); // Delay ensures tracking is stable before detaching
         }
       };
 
-      // Simulate head/camera movement using orientation
-      if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', (event) => {
-          const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-          const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-          const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-
-          camera.rotation.set(beta - Math.PI / 2, gamma, alpha);
-        }, true);
-      }
-
-      // Slight shift based on motion (optional)
-      if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', (event) => {
-          const acc = event.accelerationIncludingGravity;
-          if (acc) {
-            camera.position.x += acc.x * 0.005;
-            camera.position.y -= acc.y * 0.005;
-          }
-        });
-      }
-
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
-
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
 
-      await mindarThree.start().catch(err => {
-        console.error("MindAR failed to start:", err);
-      });
+      await mindarThree.start();
 
       const clock = new THREE.Clock();
       renderer.setAnimationLoop(() => {
