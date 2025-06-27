@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Waterfall</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AR Waterfall Persistent Lock</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -12,7 +12,9 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      touch-action: none;
+      touch-action: none; /* Prevent zoom and pan on touch */
+      height: 100%;
+      width: 100%;
     }
     #container {
       width: 100vw;
@@ -23,6 +25,7 @@
       width: 100% !important;
       height: 100% !important;
       object-fit: cover;
+      display: block;
     }
   </style>
 </head>
@@ -30,6 +33,11 @@
   <div id="container"></div>
 
   <script>
+    window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('gesturestart', e => e.preventDefault());
+    window.addEventListener('gesturechange', e => e.preventDefault());
+    window.addEventListener('gestureend', e => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -44,11 +52,11 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let modelOriginal;
-      let modelLocked;
-      let animations;
-      let persisted = false;
       let mixer;
+      let modelOriginal;
+      let animations;
+      let modelLocked = null;
+      let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         modelOriginal = gltf.scene;
@@ -70,29 +78,29 @@
 
       anchor.onTargetFound = () => {
         if (!persisted && modelOriginal) {
-          // Defer lock slightly to allow stable tracking
           setTimeout(() => {
-            // Clone the model to use as persistent one
+            // Clone the original model for locking
             modelLocked = modelOriginal.clone(true);
-            modelOriginal.updateMatrixWorld(true);
 
+            // Update anchor's world matrix (marker position)
+            anchor.group.updateMatrixWorld(true);
+
+            // Decompose anchor's world matrix to get position/quaternion/scale
             const worldPos = new THREE.Vector3();
             const worldQuat = new THREE.Quaternion();
             const worldScale = new THREE.Vector3();
+            anchor.group.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            modelOriginal.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-
-            // Remove original from anchor group
+            // Remove original model from anchor to stop it moving with marker
             anchor.group.remove(modelOriginal);
 
-            // Apply world transform
+            // Apply world transform to locked model and add to scene root
             modelLocked.position.copy(worldPos);
             modelLocked.quaternion.copy(worldQuat);
             modelLocked.scale.copy(worldScale);
-
             scene.add(modelLocked);
 
-            // Re-setup animation for the new instance
+            // Create animation mixer for locked model if animations exist
             if (animations.length > 0) {
               mixer = new THREE.AnimationMixer(modelLocked);
               animations.forEach((clip) => {
@@ -101,9 +109,11 @@
             }
 
             persisted = true;
-          }, 300); // short delay ensures matrixWorld is accurate
+          }, 300); // Delay to ensure stable tracking
         }
       };
+
+      // Optional: handle target lost - keep the model visible by doing nothing here
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
@@ -114,6 +124,7 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
+
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
