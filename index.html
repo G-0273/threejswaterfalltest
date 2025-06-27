@@ -50,25 +50,24 @@
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-      let mixer;
-      let model;
+      let mixer = null;
+      let originalGltf = null;
       let persisted = false;
-      let animations;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        model = gltf.scene;
-        animations = gltf.animations;
+        originalGltf = gltf;
 
+        const model = gltf.scene;
         model.scale.set(0.3, 0.3, 0.3);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.3, 0);
 
         anchor.group.add(model);
 
-        // Initial animation while attached
-        if (animations.length > 0) {
+        // Temporary mixer while attached
+        if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
-          animations.forEach((clip) => {
+          gltf.animations.forEach((clip) => {
             const action = mixer.clipAction(clip);
             action.play();
           });
@@ -76,30 +75,35 @@
       });
 
       anchor.onTargetFound = () => {
-        if (!persisted && model) {
+        if (!persisted && originalGltf) {
           setTimeout(() => {
             if (!anchor.group.visible) return;
 
+            const model = originalGltf.scene;
             model.updateMatrixWorld(true);
+
+            // Extract world position, rotation, and scale
             const worldPos = new THREE.Vector3();
             const worldQuat = new THREE.Quaternion();
             const worldScale = new THREE.Vector3();
             model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            anchor.group.remove(model);
-            model.position.copy(worldPos);
-            model.quaternion.copy(worldQuat);
-            model.scale.copy(worldScale);
-            scene.add(model);
+            // Clone model
+            const persistentModel = model.clone(true);
+            persistentModel.position.copy(worldPos);
+            persistentModel.quaternion.copy(worldQuat);
+            persistentModel.scale.copy(worldScale);
 
-            // New mixer after moving
-            if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(model);
-              animations.forEach((clip) => {
-                const action = mixer.clipAction(clip);
-                action.play();
-              });
-            }
+            // Remove old and add new to scene
+            anchor.group.remove(model);
+            scene.add(persistentModel);
+
+            // Setup new mixer for clone
+            mixer = new THREE.AnimationMixer(persistentModel);
+            originalGltf.animations.forEach((clip) => {
+              const action = mixer.clipAction(clip);
+              action.play();
+            });
 
             persisted = true;
           }, 300);
