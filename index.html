@@ -33,7 +33,7 @@
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
-        imageTargetSrc: "./green.mind", // Make sure this path is correct
+        imageTargetSrc: "./green.mind",
         filterMinCF: 0.1,
         filterBeta: 0.01,
       });
@@ -44,9 +44,7 @@
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
 
-      let model;
-      let mixer;
-      let animations;
+      let model, animations, mixer;
       let persisted = false;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -57,6 +55,7 @@
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
 
+        // Initially add to anchor
         anchor.group.add(model);
 
         if (animations.length > 0) {
@@ -70,38 +69,38 @@
 
       anchor.onTargetFound = () => {
         if (!persisted && model) {
-          model.updateMatrixWorld(true);
+          // Wait a moment to let tracking stabilize
+          setTimeout(() => {
+            if (!anchor.group.visible) return;
 
-          const worldPos = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          const worldScale = new THREE.Vector3();
-          model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+            model.updateMatrixWorld(true);
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          // Detach from anchor and lock in world space
-          anchor.group.remove(model);
-          model.position.copy(worldPos);
-          model.quaternion.copy(worldQuat);
-          model.scale.copy(worldScale);
-          scene.add(model);
+            anchor.group.remove(model);
+            model.position.copy(worldPos);
+            model.quaternion.copy(worldQuat);
+            model.scale.copy(worldScale);
+            scene.add(model);
 
-          // Restart mixer for detached model
-          if (animations && animations.length > 0) {
-            mixer = new THREE.AnimationMixer(model);
-            animations.forEach((clip) => {
-              mixer.clipAction(clip).play();
-            });
-          }
+            // Re-initialize mixer on detached model
+            if (animations.length > 0) {
+              mixer = new THREE.AnimationMixer(model);
+              animations.forEach((clip) => {
+                const action = mixer.clipAction(clip);
+                action.play();
+              });
+            }
 
-          persisted = true;
+            persisted = true;
+          }, 300); // small delay for stability
         }
       };
 
-      // Don’t remove model on marker lost
-      anchor.onTargetLost = () => {};
-
-      // Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
+      // Light
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
