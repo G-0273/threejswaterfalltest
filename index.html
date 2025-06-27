@@ -2,30 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AR Waterfall Persistent Lock</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR Waterfall with Persistence & Movement</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      touch-action: none; /* Prevent zoom and pan on touch */
-      height: 100%;
-      width: 100%;
+      margin: 0; padding: 0; overflow: hidden; touch-action: none;
     }
     #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
+      width: 100vw; height: 100vh; position: relative;
     }
     canvas {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover;
-      display: block;
+      width: 100% !important; height: 100% !important; object-fit: cover;
     }
   </style>
 </head>
@@ -33,7 +23,7 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
     window.addEventListener('gesturestart', e => e.preventDefault());
     window.addEventListener('gesturechange', e => e.preventDefault());
     window.addEventListener('gestureend', e => e.preventDefault());
@@ -54,9 +44,16 @@
 
       let mixer;
       let modelOriginal;
-      let animations;
-      let modelLocked = null;
+      let animations = [];
       let persisted = false;
+
+      let modelLocked = null;
+      let basePosition = new THREE.Vector3();
+      let baseQuaternion = new THREE.Quaternion();
+      let baseScale = new THREE.Vector3();
+      let posOffset = new THREE.Vector3();
+      let velocity = new THREE.Vector3();
+      let lastTimestamp = null;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         modelOriginal = gltf.scene;
@@ -71,52 +68,110 @@
         if (animations.length > 0) {
           mixer = new THREE.AnimationMixer(modelOriginal);
           animations.forEach((clip) => {
-            mixer.clipAction(clip).play();
+            const action = mixer.clipAction(clip);
+            action.play();
           });
         }
       });
 
       anchor.onTargetFound = () => {
         if (!persisted && modelOriginal) {
-          setTimeout(() => {
-            // Clone the original model for locking
-            modelLocked = modelOriginal.clone(true);
+          // Detach original model from anchor
+          anchor.group.remove(modelOriginal);
 
-            // Update anchor's world matrix (marker position)
-            anchor.group.updateMatrixWorld(true);
+          // Clone model to create locked copy
+          modelLocked = modelOriginal.clone(true);
 
-            // Decompose anchor's world matrix to get position/quaternion/scale
-            const worldPos = new THREE.Vector3();
-            const worldQuat = new THREE.Quaternion();
-            const worldScale = new THREE.Vector3();
-            anchor.group.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+          // Get anchor's world transform as base
+          anchor.group.updateMatrixWorld(true);
+          anchor.group.matrixWorld.decompose(basePosition, baseQuaternion, baseScale);
 
-            // Remove original model from anchor to stop it moving with marker
-            anchor.group.remove(modelOriginal);
+          // Position and orient locked model at anchor's world transform
+          modelLocked.position.copy(basePosition);
+          modelLocked.quaternion.copy(baseQuaternion);
+          modelLocked.scale.copy(baseScale);
 
-            // Apply world transform to locked model and add to scene root
-            modelLocked.position.copy(worldPos);
-            modelLocked.quaternion.copy(worldQuat);
-            modelLocked.scale.copy(worldScale);
-            scene.add(modelLocked);
+          // Add locked model to scene root
+          scene.add(modelLocked);
 
-            // Create animation mixer for locked model if animations exist
-            if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(modelLocked);
-              animations.forEach((clip) => {
-                mixer.clipAction(clip).play();
-              });
-            }
+          // Setup animation mixer for locked model
+          if (animations.length > 0) {
+            mixer = new THREE.AnimationMixer(modelLocked);
+            animations.forEach((clip) => {
+              const action = mixer.clipAction(clip);
+              action.play();
+            });
+          }
 
-            persisted = true;
-          }, 300); // Delay to ensure stable tracking
+          // Reset position offset & velocity for movement mimic
+          posOffset.set(0, 0, 0);
+          velocity.set(0, 0, 0);
+          lastTimestamp = null;
+
+          persisted = true;
         }
       };
 
-      // Optional: handle target lost - keep the model visible by doing nothing here
+      // Rotate locked model based on device orientation (gyroscope)
+      if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', (event) => {
+          if (!modelLocked) return;
+
+          // Convert degrees to radians
+          const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+          const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+          const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
+
+          // Euler angles ZYX order to Quaternion
+          const euler = new THREE.Euler(beta, gamma, alpha, 'ZYX');
+          const deviceQuaternion = new THREE.Quaternion();
+          deviceQuaternion.setFromEuler(euler);
+
+          modelLocked.quaternion.copy(deviceQuaternion);
+        }, true);
+      }
+
+      // Move locked model slightly based on device motion (acceleration)
+      if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', (event) => {
+          if (!modelLocked) return;
+
+          const acc = event.accelerationIncludingGravity;
+          if (!acc) return;
+
+          const now = event.timeStamp || performance.now();
+
+          if (lastTimestamp !== null) {
+            const dt = (now - lastTimestamp) / 1000; // seconds elapsed
+
+            // Integrate acceleration to velocity
+            velocity.x += acc.x * dt;
+            velocity.y += acc.y * dt;
+            velocity.z += acc.z * dt;
+
+            // Integrate velocity to position offset
+            posOffset.x += velocity.x * dt;
+            posOffset.y += velocity.y * dt;
+            posOffset.z += velocity.z * dt;
+
+            // Clamp offset so model doesn't drift too far
+            const maxOffset = 0.3;
+            posOffset.clamp(
+              new THREE.Vector3(-maxOffset, -maxOffset, -maxOffset),
+              new THREE.Vector3(maxOffset, maxOffset, maxOffset)
+            );
+
+            // Update model position relative to base position + offset
+            modelLocked.position.addVectors(basePosition, posOffset);
+          }
+
+          lastTimestamp = now;
+        });
+      }
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
+
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -134,5 +189,4 @@
   </script>
 </body>
 </html>
-
 
