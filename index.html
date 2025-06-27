@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Waterfall with Persistence & Movement</title>
+  <title>AR Waterfall Persistent Tracking</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -23,12 +23,14 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-    window.addEventListener('gesturestart', e => e.preventDefault());
-    window.addEventListener('gesturechange', e => e.preventDefault());
-    window.addEventListener('gestureend', e => e.preventDefault());
+    // Disable pinch zoom etc.
+    window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(evt => {
+      window.addEventListener(evt, e => e.preventDefault());
+    });
 
     document.addEventListener("DOMContentLoaded", async () => {
+      console.log("Starting MindAR...");
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./green.mind",
@@ -44,129 +46,89 @@
 
       let mixer;
       let modelOriginal;
-      let animations = [];
+      let modelLocked;
+      let animations;
       let persisted = false;
 
-      let modelLocked = null;
-      let basePosition = new THREE.Vector3();
-      let baseQuaternion = new THREE.Quaternion();
-      let baseScale = new THREE.Vector3();
-      let posOffset = new THREE.Vector3();
-      let velocity = new THREE.Vector3();
-      let lastTimestamp = null;
+      gltfLoader.load("models/waterfall.glb",
+        (gltf) => {
+          console.log("Model loaded");
+          modelOriginal = gltf.scene;
+          animations = gltf.animations;
 
-      gltfLoader.load("models/waterfall.glb", (gltf) => {
-        modelOriginal = gltf.scene;
-        animations = gltf.animations;
+          modelOriginal.scale.set(0.2, 0.25, 0.2);
+          modelOriginal.rotation.set(0, -Math.PI / 2, 0);
+          modelOriginal.position.set(0, -1.1, -0.3);
 
-        modelOriginal.scale.set(0.2, 0.25, 0.2);
-        modelOriginal.rotation.set(0, -Math.PI / 2, 0);
-        modelOriginal.position.set(0, -1.1, -0.3);
+          anchor.group.add(modelOriginal);
 
-        anchor.group.add(modelOriginal);
-
-        if (animations.length > 0) {
-          mixer = new THREE.AnimationMixer(modelOriginal);
-          animations.forEach((clip) => {
-            const action = mixer.clipAction(clip);
-            action.play();
-          });
+          if (animations.length > 0) {
+            mixer = new THREE.AnimationMixer(modelOriginal);
+            animations.forEach(clip => mixer.clipAction(clip).play());
+          }
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading model:", error);
         }
-      });
+      );
 
       anchor.onTargetFound = () => {
+        console.log("Marker found");
         if (!persisted && modelOriginal) {
-          // Detach original model from anchor
+          modelOriginal.updateMatrixWorld(true);
+
+          // Decompose world matrix of original model
+          const worldPos = new THREE.Vector3();
+          const worldQuat = new THREE.Quaternion();
+          const worldScale = new THREE.Vector3();
+          modelOriginal.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+
+          // Remove original from anchor group (tracking)
           anchor.group.remove(modelOriginal);
 
-          // Clone model to create locked copy
+          // Clone and add locked model to scene root at the decomposed position
           modelLocked = modelOriginal.clone(true);
+          modelLocked.position.copy(worldPos);
+          modelLocked.quaternion.copy(worldQuat);
+          modelLocked.scale.copy(worldScale);
 
-          // Get anchor's world transform as base
-          anchor.group.updateMatrixWorld(true);
-          anchor.group.matrixWorld.decompose(basePosition, baseQuaternion, baseScale);
-
-          // Position and orient locked model at anchor's world transform
-          modelLocked.position.copy(basePosition);
-          modelLocked.quaternion.copy(baseQuaternion);
-          modelLocked.scale.copy(baseScale);
-
-          // Add locked model to scene root
           scene.add(modelLocked);
 
-          // Setup animation mixer for locked model
+          // Setup mixer for locked model animations
           if (animations.length > 0) {
             mixer = new THREE.AnimationMixer(modelLocked);
-            animations.forEach((clip) => {
-              const action = mixer.clipAction(clip);
-              action.play();
-            });
+            animations.forEach(clip => mixer.clipAction(clip).play());
           }
 
-          // Reset position offset & velocity for movement mimic
-          posOffset.set(0, 0, 0);
-          velocity.set(0, 0, 0);
-          lastTimestamp = null;
-
           persisted = true;
+          console.log("Model locked in world space");
         }
       };
 
-      // Rotate locked model based on device orientation (gyroscope)
+      anchor.onTargetLost = () => {
+        console.log("Marker lost");
+        if (persisted) {
+          if (modelLocked) {
+            scene.remove(modelLocked);
+            modelLocked = null;
+          }
+          if (modelOriginal) {
+            anchor.group.add(modelOriginal);
+          }
+          persisted = false;
+          console.log("Reset tracking");
+        }
+      };
+
+      // Device orientation: rotate camera to simulate walking around
       if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', (event) => {
-          if (!modelLocked) return;
-
-          // Convert degrees to radians
           const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
           const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
           const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-
-          // Euler angles ZYX order to Quaternion
-          const euler = new THREE.Euler(beta, gamma, alpha, 'ZYX');
-          const deviceQuaternion = new THREE.Quaternion();
-          deviceQuaternion.setFromEuler(euler);
-
-          modelLocked.quaternion.copy(deviceQuaternion);
+          camera.rotation.set(beta - Math.PI / 2, gamma, alpha);
         }, true);
-      }
-
-      // Move locked model slightly based on device motion (acceleration)
-      if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', (event) => {
-          if (!modelLocked) return;
-
-          const acc = event.accelerationIncludingGravity;
-          if (!acc) return;
-
-          const now = event.timeStamp || performance.now();
-
-          if (lastTimestamp !== null) {
-            const dt = (now - lastTimestamp) / 1000; // seconds elapsed
-
-            // Integrate acceleration to velocity
-            velocity.x += acc.x * dt;
-            velocity.y += acc.y * dt;
-            velocity.z += acc.z * dt;
-
-            // Integrate velocity to position offset
-            posOffset.x += velocity.x * dt;
-            posOffset.y += velocity.y * dt;
-            posOffset.z += velocity.z * dt;
-
-            // Clamp offset so model doesn't drift too far
-            const maxOffset = 0.3;
-            posOffset.clamp(
-              new THREE.Vector3(-maxOffset, -maxOffset, -maxOffset),
-              new THREE.Vector3(maxOffset, maxOffset, maxOffset)
-            );
-
-            // Update model position relative to base position + offset
-            modelLocked.position.addVectors(basePosition, posOffset);
-          }
-
-          lastTimestamp = now;
-        });
       }
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
