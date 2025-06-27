@@ -1,83 +1,126 @@
-<script>
-document.addEventListener("DOMContentLoaded", async () => {
-  const mindarThree = new window.MINDAR.IMAGE.MindARThree({
-    container: document.querySelector("#container"),
-    imageTargetSrc: "./green.mind",
-    filterMinCF: 0.1,
-    filterBeta: 0.01,
-  });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR Waterfall</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
 
-  const { renderer, scene, camera } = mindarThree;
-  camera.position.z = 3;
+  <script>
+    window.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('gesturestart', (e) => e.preventDefault());
+    window.addEventListener('gesturechange', (e) => e.preventDefault());
+    window.addEventListener('gestureend', (e) => e.preventDefault());
 
-  const anchors = [mindarThree.addAnchor(0), mindarThree.addAnchor(1), mindarThree.addAnchor(2)];
-  const gltfLoader = new THREE.GLTFLoader();
-
-  const models = [];
-  const mixers = [];
-  const persisted = [false, false, false];
-
-  gltfLoader.load("models/waterfall.glb", (gltf) => {
-    const animations = gltf.animations;
-
-    anchors.forEach((anchor, index) => {
-      const instance = gltf.scene.clone(true);
-      instance.scale.set(0.3, 0.3, 0.3);
-      instance.rotation.set(0, -Math.PI / 2, 0);
-      instance.position.set(0, -1.3, 0);
-      anchor.group.add(instance);
-      models[index] = instance;
-
-      const mixer = new THREE.AnimationMixer(instance);
-      animations.forEach((clip) => {
-        const action = mixer.clipAction(clip);
-        action.play();
+    document.addEventListener("DOMContentLoaded", async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#container"),
+        imageTargetSrc: "./green.mind",
+        filterMinCF: 0.1,
+        filterBeta: 0.01,
       });
-      mixers[index] = mixer;
 
-      anchor.onTargetFound = () => {
-        if (!persisted[index]) {
-          instance.updateMatrixWorld(true);
-          const worldPos = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          const worldScale = new THREE.Vector3();
-          instance.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+      const { renderer, scene, camera } = mindarThree;
+      camera.position.z = 3;
 
-          anchor.group.remove(instance);
-          instance.position.copy(worldPos);
-          instance.quaternion.copy(worldQuat);
-          instance.scale.copy(worldScale);
-          scene.add(instance);
+      const anchor = mindarThree.addAnchor(0);
+      const gltfLoader = new THREE.GLTFLoader();
+      let mixer;
+      let model;
+      let animations;
+      let persisted = false;
 
-          const newMixer = new THREE.AnimationMixer(instance);
+      gltfLoader.load("models/waterfall.glb", (gltf) => {
+        model = gltf.scene;
+        animations = gltf.animations;
+
+        model.scale.set(0.3, 0.3, 0.3);
+        model.rotation.set(0, -Math.PI / 2, 0);
+        model.position.set(0, -1.3, 0);
+
+        anchor.group.add(model);
+
+        // Initial animation while still attached to the anchor
+        if (animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
           animations.forEach((clip) => {
-            const action = newMixer.clipAction(clip);
+            const action = mixer.clipAction(clip);
             action.play();
           });
-          mixers[index] = newMixer;
+        }
+      });
 
-          persisted[index] = true;
+      anchor.onTargetFound = () => {
+        if (!persisted && model) {
+          model.updateMatrixWorld(true);
+
+          const worldPos = new THREE.Vector3();
+          const worldScale = new THREE.Vector3();
+          const dummyQuat = new THREE.Quaternion(); // Ignored
+
+          model.matrixWorld.decompose(worldPos, dummyQuat, worldScale);
+
+          // Remove from anchor and re-add to world
+          anchor.group.remove(model);
+
+          // Copy position, but manually set rotation
+          model.position.copy(worldPos);
+          model.rotation.set(0, -Math.PI / 2, 0); // ← Adjust as needed
+          model.scale.copy(worldScale);
+          scene.add(model);
+
+          // Restart animation after detaching
+          mixer = new THREE.AnimationMixer(model);
+          animations.forEach((clip) => {
+            const action = mixer.clipAction(clip);
+            action.play();
+          });
+
+          persisted = true;
         }
       };
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 3);
+      scene.add(directionalLight);
+
+      await mindarThree.start();
+
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        const delta = clock.getDelta();
+        if (mixer) mixer.update(delta);
+        renderer.render(scene, camera);
+      });
     });
-  });
-
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-  scene.add(ambientLight);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(1, 2, 3);
-  scene.add(directionalLight);
-
-  await mindarThree.start();
-
-  const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
-    const delta = clock.getDelta();
-    mixers.forEach((mixer) => {
-      if (mixer) mixer.update(delta);
-    });
-    renderer.render(scene, camera);
-  });
-});
-</script>
+  </script>
+</body>
+</html>
 
