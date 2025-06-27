@@ -67,26 +67,26 @@
       });
 
       anchor.onTargetFound = () => {
-        // Use a short delay to allow the model to be fully tracked
-        if (!persisted && model && anchor.group.visible) {
+        if (!persisted && model) {
           setTimeout(() => {
-            if (!anchor.group.visible) return; // bail out if lost again
-            model.updateMatrixWorld(true);
+            if (!anchor.group.visible) return;
+
+            const clone = model.clone();
+            clone.updateMatrixWorld(true);
 
             const worldPos = new THREE.Vector3();
             const worldQuat = new THREE.Quaternion();
             const worldScale = new THREE.Vector3();
             model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-            anchor.group.remove(model);
-            model.position.copy(worldPos);
-            model.quaternion.copy(worldQuat);
-            model.scale.copy(worldScale);
-            scene.add(model);
+            clone.position.copy(worldPos);
+            clone.quaternion.copy(worldQuat);
+            clone.scale.copy(worldScale);
+            scene.add(clone);
 
-            // Reassign mixer for the detached model
+            // Recreate mixer for the clone
             if (animations.length > 0) {
-              mixer = new THREE.AnimationMixer(model);
+              mixer = new THREE.AnimationMixer(clone);
               animations.forEach((clip) => {
                 const action = mixer.clipAction(clip);
                 action.play();
@@ -94,12 +94,13 @@
             }
 
             persisted = true;
-          }, 300); // delay for stable tracking
+          }, 300); // Small delay to stabilize tracking
         }
       };
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
+
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -116,6 +117,5 @@
   </script>
 </body>
 </html>
-
 
 
