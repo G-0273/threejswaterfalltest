@@ -12,7 +12,7 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      touch-action: none; /* Prevent touch zoom and pan */
+      touch-action: none;
     }
     #container {
       width: 100vw;
@@ -30,7 +30,6 @@
   <div id="container"></div>
 
   <script>
-    // Prevent zoom on wheel and gesture events
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
@@ -77,27 +76,21 @@
         }
       });
 
-      // When marker is found, detach model from anchor and lock its position in world space
       anchor.onTargetFound = () => {
         if (!persisted && model) {
           model.updateMatrixWorld(true);
 
-          // Get model's world transform
           const worldPos = new THREE.Vector3();
           const worldQuat = new THREE.Quaternion();
           const worldScale = new THREE.Vector3();
           model.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          // Remove model from anchor so it won't move with marker anymore
           anchor.group.remove(model);
-
-          // Apply world transform to model and add to scene root
           model.position.copy(worldPos);
           model.quaternion.copy(worldQuat);
           model.scale.copy(worldScale);
           scene.add(model);
 
-          // Recreate mixer for detached model and replay animations
           if (animations.length > 0) {
             mixer = new THREE.AnimationMixer(model);
             animations.forEach((clip) => {
@@ -110,12 +103,31 @@
         }
       };
 
-      // Optional: If you want to handle marker lost events and keep the model visible,
-      // you can override anchor.onTargetLost here or just leave it so model stays.
+      // Simulate head rotation with gyro
+      if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', (event) => {
+          const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+          const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+          const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
+
+          // Rotate camera slightly to simulate looking around
+          camera.rotation.set(beta - Math.PI / 2, gamma, alpha);
+        }, true);
+      }
+
+      // Simulate position shift from device motion
+      if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', (event) => {
+          const acc = event.accelerationIncludingGravity;
+          if (acc) {
+            camera.position.x += acc.x * 0.01;
+            camera.position.y -= acc.y * 0.01;
+          }
+        });
+      }
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
-
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -123,7 +135,6 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
-
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
