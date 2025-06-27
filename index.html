@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Waterfall Persistent Tracking</title>
+  <title>AR Waterfall with Persistent Lock + Debug</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -23,14 +23,12 @@
   <div id="container"></div>
 
   <script>
-    // Disable pinch zoom etc.
     window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
-    ['gesturestart', 'gesturechange', 'gestureend'].forEach(evt => {
-      window.addEventListener(evt, e => e.preventDefault());
+    ['gesturestart','gesturechange','gestureend'].forEach(ev => {
+      window.addEventListener(ev, e => e.preventDefault());
     });
 
     document.addEventListener("DOMContentLoaded", async () => {
-      console.log("Starting MindAR...");
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./green.mind",
@@ -42,98 +40,90 @@
       camera.position.z = 3;
 
       const anchor = mindarThree.addAnchor(0);
-      const gltfLoader = new THREE.GLTFLoader();
+      const loader = new THREE.GLTFLoader();
 
-      let mixer;
-      let modelOriginal;
-      let modelLocked;
-      let animations;
-      let persisted = false;
+      let mixerTracked = null;
+      let mixerLocked = null;
+      let modelTracked = null;
+      let modelLocked = null;
+      let animations = null;
+      let locked = false;
 
-      gltfLoader.load("models/waterfall.glb",
-        (gltf) => {
-          console.log("Model loaded");
-          modelOriginal = gltf.scene;
-          animations = gltf.animations;
+      loader.load("models/waterfall.glb", (gltf) => {
+        modelTracked = gltf.scene;
+        animations = gltf.animations;
 
-          modelOriginal.scale.set(0.2, 0.25, 0.2);
-          modelOriginal.rotation.set(0, -Math.PI / 2, 0);
-          modelOriginal.position.set(0, -1.1, -0.3);
+        modelTracked.scale.set(0.2, 0.25, 0.2);
+        modelTracked.rotation.set(0, -Math.PI / 2, 0);
+        modelTracked.position.set(0, -1.1, -0.3);
 
-          anchor.group.add(modelOriginal);
+        anchor.group.add(modelTracked);
 
-          if (animations.length > 0) {
-            mixer = new THREE.AnimationMixer(modelOriginal);
-            animations.forEach(clip => mixer.clipAction(clip).play());
-          }
-        },
-        undefined,
-        (error) => {
-          console.error("Error loading model:", error);
+        if (animations.length > 0) {
+          mixerTracked = new THREE.AnimationMixer(modelTracked);
+          animations.forEach(clip => {
+            mixerTracked.clipAction(clip).play();
+          });
         }
-      );
+      });
 
       anchor.onTargetFound = () => {
-        console.log("Marker found");
-        if (!persisted && modelOriginal) {
-          modelOriginal.updateMatrixWorld(true);
+        if (!locked && modelTracked) {
+          modelTracked.updateMatrixWorld(true);
 
-          // Decompose world matrix of original model
+          // Decompose tracked model's world matrix
           const worldPos = new THREE.Vector3();
           const worldQuat = new THREE.Quaternion();
           const worldScale = new THREE.Vector3();
-          modelOriginal.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+          modelTracked.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-          // Remove original from anchor group (tracking)
-          anchor.group.remove(modelOriginal);
+          // Remove tracked model from anchor to stop it moving with marker
+          anchor.group.remove(modelTracked);
 
-          // Clone and add locked model to scene root at the decomposed position
-          modelLocked = modelOriginal.clone(true);
+          // Clone tracked model to create locked model
+          modelLocked = modelTracked.clone(true);
           modelLocked.position.copy(worldPos);
           modelLocked.quaternion.copy(worldQuat);
           modelLocked.scale.copy(worldScale);
 
+          // Nudge locked model so it stays visible and not offscreen
+          modelLocked.position.z -= 0.5;  // tweak this if needed
+          modelLocked.position.y -= 0.2;
+
           scene.add(modelLocked);
 
-          // Setup mixer for locked model animations
+          // Add bounding box helper to see model position (for debugging)
+          const boxHelper = new THREE.BoxHelper(modelLocked, 0xffff00);
+          scene.add(boxHelper);
+
+          // Create animation mixer for locked model and play animations
           if (animations.length > 0) {
-            mixer = new THREE.AnimationMixer(modelLocked);
-            animations.forEach(clip => mixer.clipAction(clip).play());
+            mixerLocked = new THREE.AnimationMixer(modelLocked);
+            animations.forEach(clip => {
+              mixerLocked.clipAction(clip).play();
+            });
           }
 
-          persisted = true;
-          console.log("Model locked in world space");
+          locked = true;
         }
       };
 
       anchor.onTargetLost = () => {
-        console.log("Marker lost");
-        if (persisted) {
+        // Remove locked model and mixer when marker lost
+        if (locked) {
           if (modelLocked) {
             scene.remove(modelLocked);
             modelLocked = null;
           }
-          if (modelOriginal) {
-            anchor.group.add(modelOriginal);
-          }
-          persisted = false;
-          console.log("Reset tracking");
+          mixerLocked = null;
+          // Re-add tracked model back to anchor group for tracking
+          if (modelTracked) anchor.group.add(modelTracked);
+          locked = false;
         }
       };
 
-      // Device orientation: rotate camera to simulate walking around
-      if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', (event) => {
-          const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-          const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-          const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-          camera.rotation.set(beta - Math.PI / 2, gamma, alpha);
-        }, true);
-      }
-
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
-
+      // Lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
@@ -144,7 +134,10 @@
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
+
+        if (mixerTracked) mixerTracked.update(delta);
+        if (mixerLocked) mixerLocked.update(delta);
+
         renderer.render(scene, camera);
       });
     });
