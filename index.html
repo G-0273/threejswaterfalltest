@@ -12,16 +12,14 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      touch-action: none; /* Prevent touch zoom and pan */
+      touch-action: none;
     }
-
 
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
-
 
     canvas {
       width: 100% !important;
@@ -33,49 +31,42 @@
 <body>
   <div id="container"></div>
 
-
   <script>
-    // Prevent zoom on wheel and gesture events
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
-
 
     window.addEventListener('gesturestart', (e) => e.preventDefault());
     window.addEventListener('gesturechange', (e) => e.preventDefault());
     window.addEventListener('gestureend', (e) => e.preventDefault());
 
-
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.1,
-        filterBeta: 0.01,
+        filterMinCF: 0.01, // Smoother tracking
+        filterBeta: 0.001,
       });
 
-
       const { renderer, scene, camera } = mindarThree;
-
-
-      // Pull back the camera to make room for large models
       camera.position.z = 3;
-
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-      let mixer;
 
+      let model, mixer;
+      let isTracking = false;
+      let lastPoseMatrix = new THREE.Matrix4();
+      let lostTimeout;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        const model = gltf.scene;
+        model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
-
+        model.visible = false; // Start hidden
 
         anchor.group.add(model);
-
 
         if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
@@ -86,6 +77,32 @@
         }
       });
 
+      anchor.onTargetFound = () => {
+        isTracking = true;
+        if (model) {
+          model.visible = true;
+          clearTimeout(lostTimeout);
+          if (mixer) mixer.timeScale = 1; // Resume animation if paused
+        }
+      };
+
+      anchor.onTargetLost = () => {
+        isTracking = false;
+        if (model) {
+          model.visible = true; // Keep it visible temporarily
+          lastPoseMatrix.copy(model.matrixWorld);
+
+          // Optional: pause animation while marker is lost
+          if (mixer) mixer.timeScale = 0;
+
+          clearTimeout(lostTimeout);
+          lostTimeout = setTimeout(() => {
+            if (!isTracking && model) {
+              model.visible = false; // Hide if still lost after delay
+            }
+          }, 2000); // 2 second grace period
+        }
+      };
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
       scene.add(ambientLight);
@@ -93,21 +110,23 @@
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
 
-
       await mindarThree.start();
-
-
       const clock = new THREE.Clock();
-
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
+
+        // Freeze model in last known pose if tracking lost
+        if (model && !isTracking) {
+          model.matrix.copy(lastPoseMatrix);
+          model.matrix.decompose(model.position, model.quaternion, model.scale);
+        }
+
         renderer.render(scene, camera);
       });
     });
   </script>
 </body>
 </html>
-
 
