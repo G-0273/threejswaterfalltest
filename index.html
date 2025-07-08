@@ -46,6 +46,11 @@
       let lastPoseMatrix = new THREE.Matrix4();
       let lostTimeout;
 
+      // For smoothing interpolation
+      const smoothPosition = new THREE.Vector3();
+      const smoothQuaternion = new THREE.Quaternion();
+      const smoothScale = new THREE.Vector3();
+
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
@@ -76,14 +81,13 @@
       anchor.onTargetLost = () => {
         isTracking = false;
         if (model) {
-          // Save last pose for freezing
           lastPoseMatrix.copy(model.matrixWorld);
           if (mixer) mixer.timeScale = 0;
 
           clearTimeout(lostTimeout);
           lostTimeout = setTimeout(() => {
             if (!isTracking && model) {
-              model.visible = false; // Hide only after grace period
+              model.visible = false;
             }
           }, 2000);
         }
@@ -97,15 +101,22 @@
       await mindarThree.start();
 
       const clock = new THREE.Clock();
+
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
 
-        if (model) {
-          if (!isTracking && model.visible) {
-            // Freeze model in last known pose when tracking lost but visible
-            model.matrix.copy(lastPoseMatrix);
-            model.matrix.decompose(model.position, model.quaternion, model.scale);
+        if (model && model.visible) {
+          if (isTracking) {
+            // Normal tracking - no interpolation needed here (model directly controlled by MindAR anchor)
+            // Optionally you can add smoothing here if needed
+          } else {
+            // Lost tracking - interpolate smoothly towards last known pose
+            lastPoseMatrix.decompose(smoothPosition, smoothQuaternion, smoothScale);
+
+            model.position.lerp(smoothPosition, 0.1); // Adjust smoothing speed (0.1)
+            model.quaternion.slerp(smoothQuaternion, 0.1);
+            model.scale.lerp(smoothScale, 0.1);
           }
         }
 
@@ -115,4 +126,5 @@
   </script>
 </body>
 </html>
+
 
