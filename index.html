@@ -14,11 +14,13 @@
       overflow: hidden;
       touch-action: none;
     }
+
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
+
     canvas {
       width: 100% !important;
       height: 100% !important;
@@ -33,6 +35,7 @@
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
+
     window.addEventListener('gesturestart', (e) => e.preventDefault());
     window.addEventListener('gesturechange', (e) => e.preventDefault());
     window.addEventListener('gestureend', (e) => e.preventDefault());
@@ -41,8 +44,8 @@
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.01,  // ✅ Looser confidence for easier detection
-        filterBeta: 0.005   // ✅ Still stable
+        filterMinCF: 0.01, // Smoother tracking
+        filterBeta: 0.001,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -61,7 +64,7 @@
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
-        model.visible = false;
+        model.visible = false; // Start hidden
 
         anchor.group.add(model);
 
@@ -79,34 +82,42 @@
         if (model) {
           model.visible = true;
           clearTimeout(lostTimeout);
-          if (mixer) mixer.timeScale = 1;
+          if (mixer) mixer.timeScale = 1; // Resume animation if paused
         }
       };
 
       anchor.onTargetLost = () => {
         isTracking = false;
         if (model) {
+          model.visible = true; // Keep it visible temporarily
           lastPoseMatrix.copy(model.matrixWorld);
+
+          // Optional: pause animation while marker is lost
           if (mixer) mixer.timeScale = 0;
+
           clearTimeout(lostTimeout);
           lostTimeout = setTimeout(() => {
-            if (!isTracking && model) model.visible = false;
-          }, 2000);
+            if (!isTracking && model) {
+              model.visible = false; // Hide if still lost after delay
+            }
+          }, 2000); // 2 second grace period
         }
       };
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      dirLight.position.set(1, 2, 3);
-      scene.add(dirLight);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 3);
+      scene.add(directionalLight);
 
-      await mindarThree.start(); // ✅ Automatically starts camera + tracking
+      await mindarThree.start();
       const clock = new THREE.Clock();
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
 
+        // Freeze model in last known pose if tracking lost
         if (model && !isTracking) {
           model.matrix.copy(lastPoseMatrix);
           model.matrix.decompose(model.position, model.quaternion, model.scale);
