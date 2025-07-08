@@ -41,13 +41,17 @@
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-      let mixer;
+      let mixer, model;
+      let isTracking = false;
+      let lastPoseMatrix = new THREE.Matrix4();
+      let lostTimeout;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        const model = gltf.scene;
+        model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
+        model.visible = false;
 
         anchor.group.add(model);
 
@@ -60,28 +64,29 @@
         }
       });
 
-      let isTracking = false;
-      let lostTimeout;
-
       anchor.onTargetFound = () => {
         isTracking = true;
-        clearTimeout(lostTimeout);
-        if(mixer) mixer.timeScale = 1;
+        if (model) {
+          model.visible = true;
+          clearTimeout(lostTimeout);
+          if (mixer) mixer.timeScale = 1;
+        }
       };
 
       anchor.onTargetLost = () => {
         isTracking = false;
-        if(mixer) mixer.timeScale = 0;
+        if (model) {
+          // Save last pose for freezing
+          lastPoseMatrix.copy(model.matrixWorld);
+          if (mixer) mixer.timeScale = 0;
 
-        clearTimeout(lostTimeout);
-        lostTimeout = setTimeout(() => {
-          if(!isTracking) {
-            // Hide model by removing all children from anchor.group
-            while(anchor.group.children.length) {
-              anchor.group.remove(anchor.group.children[0]);
+          clearTimeout(lostTimeout);
+          lostTimeout = setTimeout(() => {
+            if (!isTracking && model) {
+              model.visible = false; // Hide only after grace period
             }
-          }
-        }, 2000); // 2 second grace period to prevent blinking
+          }, 2000);
+        }
       };
 
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -95,6 +100,15 @@
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
+
+        if (model) {
+          if (!isTracking && model.visible) {
+            // Freeze model in last known pose when tracking lost but visible
+            model.matrix.copy(lastPoseMatrix);
+            model.matrix.decompose(model.position, model.quaternion, model.scale);
+          }
+        }
+
         renderer.render(scene, camera);
       });
     });
