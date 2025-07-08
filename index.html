@@ -9,42 +9,26 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      touch-action: none; /* Prevent touch zoom and pan */
+      margin: 0; padding: 0; overflow: hidden; touch-action: none;
     }
-
-
     #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
+      width: 100vw; height: 100vh; position: relative;
     }
-
-
     canvas {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover;
+      width: 100% !important; height: 100% !important; object-fit: cover;
     }
   </style>
 </head>
 <body>
   <div id="container"></div>
 
-
   <script>
-    // Prevent zoom on wheel and gesture events
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
-
-
     window.addEventListener('gesturestart', (e) => e.preventDefault());
     window.addEventListener('gesturechange', (e) => e.preventDefault());
     window.addEventListener('gestureend', (e) => e.preventDefault());
-
 
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
@@ -54,28 +38,27 @@
         filterBeta: 0.001,
       });
 
-
       const { renderer, scene, camera } = mindarThree;
-
-
-      // Pull back the camera to make room for large models
       camera.position.z = 3;
-
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-      let mixer;
 
+      let model = null;
+      let mixer = null;
+      let modelReady = false;
+      let isTracking = false;
+      let lostTimeout = null;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        const model = gltf.scene;
+        model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
-
+        model.visible = false;
 
         anchor.group.add(model);
-
+        modelReady = true;
 
         if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
@@ -86,28 +69,48 @@
         }
       });
 
+      anchor.onTargetFound = () => {
+        console.log("Marker found");
+        isTracking = true;
+        if (modelReady && model) {
+          clearTimeout(lostTimeout);
+          model.visible = true;
+          if (mixer) mixer.timeScale = 1;
+        }
+      };
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
+      anchor.onTargetLost = () => {
+        console.log("Marker lost");
+        isTracking = false;
+        if (modelReady && model) {
+          if (mixer) mixer.timeScale = 0;
+          clearTimeout(lostTimeout);
+          lostTimeout = setTimeout(() => {
+            if (!isTracking) {
+              model.visible = false;
+              console.log("Model hidden after delay");
+            }
+          }, 1500); // 1.5s grace period to reduce flicker
+        }
+      };
+
+      // Lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
       scene.add(directionalLight);
 
-
       await mindarThree.start();
-
 
       const clock = new THREE.Clock();
 
-
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
+        if (mixer && isTracking) mixer.update(delta);
         renderer.render(scene, camera);
       });
     });
   </script>
 </body>
 </html>
-
 
