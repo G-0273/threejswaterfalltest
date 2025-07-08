@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Waterfall</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
@@ -23,7 +23,7 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
     window.addEventListener('gesturestart', e => e.preventDefault());
     window.addEventListener('gesturechange', e => e.preventDefault());
     window.addEventListener('gestureend', e => e.preventDefault());
@@ -32,7 +32,7 @@
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.1,
+        filterMinCF: 0.05,   // Lower confidence threshold for smoother tracking
         filterBeta: 0.01,
       });
 
@@ -41,23 +41,19 @@
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-      let mixer, model;
-      let isTracking = false;
-      let lastPoseMatrix = new THREE.Matrix4();
-      let lostTimeout;
 
-      // Smoothed pose targets for interpolation
-      const smoothPosition = new THREE.Vector3();
-      const smoothQuaternion = new THREE.Quaternion();
-      const smoothScale = new THREE.Vector3();
+      let model = null;
+      let mixer = null;
+      let isTracking = false;
+      let lostTimeout;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
+        console.log("GLTF model loaded");
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
         model.visible = false;
-
         anchor.group.add(model);
 
         if (gltf.animations.length > 0) {
@@ -73,8 +69,8 @@
         console.log("Target found");
         isTracking = true;
         if (model) {
-          model.visible = true;
           clearTimeout(lostTimeout);
+          model.visible = true;
           if (mixer) mixer.timeScale = 1;
         }
       };
@@ -83,17 +79,13 @@
         console.log("Target lost");
         isTracking = false;
         if (model) {
-          // Save last pose for smooth interpolation
-          lastPoseMatrix.copy(model.matrixWorld);
           if (mixer) mixer.timeScale = 0;
-
           clearTimeout(lostTimeout);
           lostTimeout = setTimeout(() => {
             if (!isTracking && model) {
               model.visible = false;
-              console.log("Model hidden after timeout");
             }
-          }, 2000);
+          }, 1500); // 1.5 seconds grace period before hiding
         }
       };
 
@@ -108,21 +100,7 @@
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
-
-        if (model && model.visible) {
-          if (!isTracking) {
-            // Smoothly interpolate to last pose when lost
-            lastPoseMatrix.decompose(smoothPosition, smoothQuaternion, smoothScale);
-
-            model.position.lerp(smoothPosition, 0.1);
-            model.quaternion.slerp(smoothQuaternion, 0.1);
-            model.scale.lerp(smoothScale, 0.1);
-          }
-          // else: when tracking, do NOT manually modify model transform
-          // Let MindAR update model position and rotation directly
-        }
-
+        if (mixer && isTracking) mixer.update(delta);
         renderer.render(scene, camera);
       });
     });
