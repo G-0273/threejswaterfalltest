@@ -14,11 +14,13 @@
       overflow: hidden;
       touch-action: none;
     }
+
     #container {
       width: 100vw;
       height: 100vh;
       position: relative;
     }
+
     canvas {
       width: 100% !important;
       height: 100% !important;
@@ -41,8 +43,8 @@
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.01, // allow detection with lower confidence
-        filterBeta: 0.001  // reduce responsiveness to noise
+        filterMinCF: 0.05,   // Lower = more tolerant to angle/movement
+        filterBeta: 0.005,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -53,7 +55,6 @@
 
       let model, mixer;
       let isTracking = false;
-      let lastPoseMatrix = new THREE.Matrix4();
       let lostTimeout;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
@@ -86,33 +87,28 @@
       anchor.onTargetLost = () => {
         isTracking = false;
         if (model) {
-          lastPoseMatrix.copy(model.matrixWorld);
           if (mixer) mixer.timeScale = 0;
+
           clearTimeout(lostTimeout);
           lostTimeout = setTimeout(() => {
-            if (!isTracking && model) model.visible = false;
-          }, 3000); // 3 seconds before hiding to reduce flicker
+            if (!isTracking && model) {
+              model.visible = false;
+            }
+          }, 2000); // 2 seconds grace period
         }
       };
 
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(1, 2, 3);
-      scene.add(directionalLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(1, 2, 3);
+      scene.add(dirLight);
 
       await mindarThree.start();
 
       const clock = new THREE.Clock();
-
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
-
-        if (model && !isTracking) {
-          model.matrix.copy(lastPoseMatrix);
-          model.matrix.decompose(model.position, model.quaternion, model.scale);
-        }
-
         renderer.render(scene, camera);
       });
     });
