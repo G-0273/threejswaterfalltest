@@ -12,7 +12,7 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      touch-action: none;
+      touch-action: none; /* Prevent touch zoom and pan */
     }
 
     #container {
@@ -32,6 +32,7 @@
   <div id="container"></div>
 
   <script>
+    // Prevent zoom on wheel and gesture events
     window.addEventListener('wheel', (e) => {
       if (e.ctrlKey) e.preventDefault();
     }, { passive: false });
@@ -44,8 +45,8 @@
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.05,   // Moderate confidence threshold
-        filterBeta: 0.01,
+        filterMinCF: 0.01,     // Lower confidence threshold for more sensitivity
+        filterBeta: 0.001,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -68,9 +69,6 @@
 
         anchor.group.add(model);
 
-        // Initialize lastPoseMatrix to current pose
-        lastPoseMatrix.copy(model.matrixWorld);
-
         if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           gltf.animations.forEach((clip) => {
@@ -86,11 +84,6 @@
           model.visible = true;
           clearTimeout(lostTimeout);
           if (mixer) mixer.timeScale = 1; // Resume animation
-
-          // Reset pose to keep model correctly anchored
-          model.position.set(0, -1.1, -0.3);
-          model.rotation.set(0, -Math.PI / 2, 0);
-          model.scale.set(0.2, 0.25, 0.2);
         }
       };
 
@@ -137,3 +130,4 @@
   </script>
 </body>
 </html>
+
