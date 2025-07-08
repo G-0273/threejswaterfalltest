@@ -66,7 +66,6 @@
         clearTimeout(lostTimeout);
         if (modelReady && model) {
           model.visible = true;
-          model.material?.opacity !== undefined && (model.material.opacity = 1);
           if (mixer) mixer.timeScale = 1;
         }
       };
@@ -86,7 +85,6 @@
         }
       };
 
-      // Lights
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
@@ -94,13 +92,21 @@
 
       await mindarThree.start();
 
+      // Request higher video resolution
+      await mindarThree.startCamera({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      });
+
       const clock = new THREE.Clock();
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer && isTracking) mixer.update(delta);
 
-        // Optional: freeze pose during tracking loss
         if (model && !isTracking && model.visible) {
           model.matrix.copy(lastPoseMatrix);
           model.matrix.decompose(model.position, model.quaternion, model.scale);
