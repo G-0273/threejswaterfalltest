@@ -68,6 +68,9 @@
 
         anchor.group.add(model);
 
+        // Initialize lastPoseMatrix to current pose
+        lastPoseMatrix.copy(model.matrixWorld);
+
         if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
           gltf.animations.forEach((clip) => {
@@ -83,6 +86,11 @@
           model.visible = true;
           clearTimeout(lostTimeout);
           if (mixer) mixer.timeScale = 1; // Resume animation
+
+          // Reset pose to keep model correctly anchored
+          model.position.set(0, -1.1, -0.3);
+          model.rotation.set(0, -Math.PI / 2, 0);
+          model.scale.set(0.2, 0.25, 0.2);
         }
       };
 
