@@ -9,22 +9,13 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      touch-action: none;
+      margin: 0; padding: 0; overflow: hidden; touch-action: none;
     }
-
     #container {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
+      width: 100vw; height: 100vh; position: relative;
     }
-
     canvas {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover;
+      width: 100% !important; height: 100% !important; object-fit: cover;
     }
   </style>
 </head>
@@ -32,19 +23,17 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', (e) => {
-      if (e.ctrlKey) e.preventDefault();
-    }, { passive: false });
-    window.addEventListener('gesturestart', (e) => e.preventDefault());
-    window.addEventListener('gesturechange', (e) => e.preventDefault());
-    window.addEventListener('gestureend', (e) => e.preventDefault());
+    window.addEventListener('wheel', e => { if(e.ctrlKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('gesturestart', e => e.preventDefault());
+    window.addEventListener('gesturechange', e => e.preventDefault());
+    window.addEventListener('gestureend', e => e.preventDefault());
 
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.05,   // Lower = more tolerant to angle/movement
-        filterBeta: 0.005,
+        filterMinCF: 0.1,
+        filterBeta: 0.01,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -52,56 +41,53 @@
 
       const anchor = mindarThree.addAnchor(0);
       const gltfLoader = new THREE.GLTFLoader();
-
-      let model, mixer;
-      let isTracking = false;
-      let lostTimeout;
+      let mixer;
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
-        model = gltf.scene;
+        const model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
         model.rotation.set(0, -Math.PI / 2, 0);
         model.position.set(0, -1.1, -0.3);
-        model.visible = false;
 
         anchor.group.add(model);
 
         if (gltf.animations.length > 0) {
           mixer = new THREE.AnimationMixer(model);
-          gltf.animations.forEach((clip) => {
+          gltf.animations.forEach(clip => {
             const action = mixer.clipAction(clip);
             action.play();
           });
         }
       });
 
+      let isTracking = false;
+      let lostTimeout;
+
       anchor.onTargetFound = () => {
         isTracking = true;
-        if (model) {
-          model.visible = true;
-          clearTimeout(lostTimeout);
-          if (mixer) mixer.timeScale = 1;
-        }
+        clearTimeout(lostTimeout);
+        if(mixer) mixer.timeScale = 1;
       };
 
       anchor.onTargetLost = () => {
         isTracking = false;
-        if (model) {
-          if (mixer) mixer.timeScale = 0;
+        if(mixer) mixer.timeScale = 0;
 
-          clearTimeout(lostTimeout);
-          lostTimeout = setTimeout(() => {
-            if (!isTracking && model) {
-              model.visible = false;
+        clearTimeout(lostTimeout);
+        lostTimeout = setTimeout(() => {
+          if(!isTracking) {
+            // Hide model by removing all children from anchor.group
+            while(anchor.group.children.length) {
+              anchor.group.remove(anchor.group.children[0]);
             }
-          }, 2000); // 2 seconds grace period
-        }
+          }
+        }, 2000); // 2 second grace period to prevent blinking
       };
 
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      dirLight.position.set(1, 2, 3);
-      scene.add(dirLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 3);
+      scene.add(directionalLight);
 
       await mindarThree.start();
 
