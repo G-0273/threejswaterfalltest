@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+v<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -104,8 +104,7 @@
       dirLight.position.set(1, 2, 3);
       scene.add(dirLight);
 
-      await mindarThree.start();
-      await mindarThree.startCamera();
+      await mindarThree.start(); // ✅ This also starts the camera
 
       const clock = new THREE.Clock();
 
@@ -113,8 +112,8 @@
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
 
-        if (model && model.visible) {
-          model.matrixWorld.decompose(smoothedPosition, smoothedQuaternion, smoothedScale);
+        if (model && isTracking) {
+          anchor.group.matrixWorld.decompose(smoothedPosition, smoothedQuaternion, smoothedScale);
           model.position.lerp(smoothedPosition, 0.2);
           model.quaternion.slerp(smoothedQuaternion, 0.2);
           model.scale.lerp(smoothedScale, 0.2);
@@ -131,4 +130,3 @@
   </script>
 </body>
 </html>
-
