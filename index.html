@@ -44,8 +44,8 @@
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
         imageTargetSrc: "./grassnew.mind",
-        filterMinCF: 0.01, // Smoother tracking
-        filterBeta: 0.001,
+        filterMinCF: 0.05,   // Moderate confidence threshold
+        filterBeta: 0.01,
       });
 
       const { renderer, scene, camera } = mindarThree;
@@ -82,25 +82,24 @@
         if (model) {
           model.visible = true;
           clearTimeout(lostTimeout);
-          if (mixer) mixer.timeScale = 1; // Resume animation if paused
+          if (mixer) mixer.timeScale = 1; // Resume animation
         }
       };
 
       anchor.onTargetLost = () => {
         isTracking = false;
         if (model) {
-          model.visible = true; // Keep it visible temporarily
           lastPoseMatrix.copy(model.matrixWorld);
-
-          // Optional: pause animation while marker is lost
+          // Pause animation while lost
           if (mixer) mixer.timeScale = 0;
 
           clearTimeout(lostTimeout);
+          // Keep model visible for 2 seconds after losing tracking
           lostTimeout = setTimeout(() => {
             if (!isTracking && model) {
-              model.visible = false; // Hide if still lost after delay
+              model.visible = false; // Hide after grace period
             }
-          }, 2000); // 2 second grace period
+          }, 2000);
         }
       };
 
@@ -111,13 +110,14 @@
       scene.add(directionalLight);
 
       await mindarThree.start();
+
       const clock = new THREE.Clock();
 
       renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
 
-        // Freeze model in last known pose if tracking lost
+        // Freeze model pose when tracking lost
         if (model && !isTracking) {
           model.matrix.copy(lastPoseMatrix);
           model.matrix.decompose(model.position, model.quaternion, model.scale);
