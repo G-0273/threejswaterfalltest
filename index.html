@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Waterfall</title>
+  <title>AR Hologram</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -17,11 +17,6 @@
   <div id="container"></div>
 
   <script>
-    window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-    window.addEventListener('gesturestart', e => e.preventDefault());
-    window.addEventListener('gesturechange', e => e.preventDefault());
-    window.addEventListener('gestureend', e => e.preventDefault());
-
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -45,16 +40,27 @@
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
+
+        // === 1. Correct scale ===
         model.scale.set(0.2, 0.25, 0.2);
-        model.rotation.set(0, 0, 0); // reset model's own rotation
 
+        // === 2. Flip model upright ===
+        model.rotation.x = Math.PI; // 180° flip to fix upside-down issue
+
+        // === 3. Wrapper group to tilt model 20° backward ===
         const tiltGroup = new THREE.Group();
-        tiltGroup.rotation.x = -THREE.MathUtils.degToRad(20); // lean backward 20°
-        tiltGroup.position.set(0, -1.1, -0.3);
-        tiltGroup.add(model);
-        model.visible = false;
+        tiltGroup.rotation.x = -THREE.MathUtils.degToRad(20); // lean back 20°
 
+        // === 4. Position model to sit on card surface ===
+        tiltGroup.position.set(0, -1.05, -0.3);
+
+        // Add model to tilted group
+        tiltGroup.add(model);
+
+        // Add tiltGroup to anchor
         anchor.group.add(tiltGroup);
+
+        model.visible = false;
         modelReady = true;
 
         if (gltf.animations.length > 0) {
@@ -71,7 +77,6 @@
         clearTimeout(lostTimeout);
         if (modelReady && model) {
           model.visible = true;
-          model.material?.opacity !== undefined && (model.material.opacity = 1);
           if (mixer) mixer.timeScale = 1;
         }
       };
@@ -91,7 +96,6 @@
         }
       };
 
-      // Lights
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
@@ -105,7 +109,7 @@
         const delta = clock.getDelta();
         if (mixer && isTracking) mixer.update(delta);
 
-        // Optional: freeze pose during tracking loss
+        // Freeze pose if needed
         if (model && !isTracking && model.visible) {
           model.matrix.copy(lastPoseMatrix);
           model.matrix.decompose(model.position, model.quaternion, model.scale);
