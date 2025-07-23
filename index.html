@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Card</title>
+  <title>AR Waterfall</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -17,6 +17,11 @@
   <div id="container"></div>
 
   <script>
+    window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('gesturestart', e => e.preventDefault());
+    window.addEventListener('gesturechange', e => e.preventDefault());
+    window.addEventListener('gestureend', e => e.preventDefault());
+
     document.addEventListener("DOMContentLoaded", async () => {
       const mindarThree = new window.MINDAR.IMAGE.MindARThree({
         container: document.querySelector("#container"),
@@ -40,23 +45,11 @@
 
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
-
-        // === Scale it ===
         model.scale.set(0.2, 0.25, 0.2);
-
-        // === Fix model orientation ===
-        model.rotation.x = Math.PI;           // flip upright
-        model.rotation.z = Math.PI;           // face forward
-
-        // === Tilt group for 20° lean backward ===
-        const tiltGroup = new THREE.Group();
-        tiltGroup.rotation.x = -THREE.Math.degToRad(20);
-        tiltGroup.position.set(0, -1.05, -0.3); // adjust to sit on marker
-
-        tiltGroup.add(model);
-        anchor.group.add(tiltGroup);
-
+        model.rotation.set(0, -Math.PI / 2, 0);
+        model.position.set(0, -1.1, -0.3);
         model.visible = false;
+        anchor.group.add(model);
         modelReady = true;
 
         if (gltf.animations.length > 0) {
@@ -73,6 +66,7 @@
         clearTimeout(lostTimeout);
         if (modelReady && model) {
           model.visible = true;
+          model.material?.opacity !== undefined && (model.material.opacity = 1);
           if (mixer) mixer.timeScale = 1;
         }
       };
@@ -92,6 +86,7 @@
         }
       };
 
+      // Lights
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(1, 2, 3);
@@ -105,7 +100,7 @@
         const delta = clock.getDelta();
         if (mixer && isTracking) mixer.update(delta);
 
-        // Freeze pose if needed
+        // Optional: freeze pose during tracking loss
         if (model && !isTracking && model.visible) {
           model.matrix.copy(lastPoseMatrix);
           model.matrix.decompose(model.position, model.quaternion, model.scale);
