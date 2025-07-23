@@ -46,10 +46,15 @@
       gltfLoader.load("models/waterfall.glb", (gltf) => {
         model = gltf.scene;
         model.scale.set(0.2, 0.25, 0.2);
-        model.rotation.set(0, -Math.PI / 2, 0);
-        model.position.set(0, -1.1, -0.3);
+        model.rotation.set(0, 0, 0); // reset model's own rotation
+
+        const tiltGroup = new THREE.Group();
+        tiltGroup.rotation.x = -THREE.MathUtils.degToRad(20); // lean backward 20°
+        tiltGroup.position.set(0, -1.1, -0.3);
+        tiltGroup.add(model);
         model.visible = false;
-        anchor.group.add(model);
+
+        anchor.group.add(tiltGroup);
         modelReady = true;
 
         if (gltf.animations.length > 0) {
@@ -112,4 +117,3 @@
   </script>
 </body>
 </html>
-
